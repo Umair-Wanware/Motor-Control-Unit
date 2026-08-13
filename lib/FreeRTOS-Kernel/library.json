@@ -1,0 +1,22 @@
+{
+  "name": "FreeRTOS-Kernel",
+  "version": "11.3.0",
+  "description": "FreeRTOS kernel for STM32F103RB",
+  "keywords": "freertos,rtos,kernel,stm32,cortex-m3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
+  },
+  "license": "MIT",
+  "platforms": "ststm32",
+  "frameworks": "stm32cube",
+  "build": {
+    "srcFilter": [
+      "+<*.c>",
+      "+<include>",
+      "-<portable>",
+      "+<portable/MemMang/heap_4.c>",
+      "+<portable/GCC/ARM_CM3>"
+    ]
+  }
+}
