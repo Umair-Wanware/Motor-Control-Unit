@@ -312,13 +312,13 @@ This project is licensed under the MIT License.
 
 **Umair Wanware**
 
-Embedded Systems Developer
+Embedded Software Developer
 
 ---
 
 ## Project Status
 
-**Current Version:** **v0.3.0**
+**Current Version:** **v1.0.0**
 
 **Development Status:** 🟢 Active Development
 
