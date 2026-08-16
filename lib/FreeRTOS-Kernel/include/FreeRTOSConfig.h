@@ -42,7 +42,7 @@
  *
  * Start with 10 KB for FreeRTOS heap.
  */
-#define configTOTAL_HEAP_SIZE                    ((size_t)(10 * 1024))
+#define configTOTAL_HEAP_SIZE                    ((size_t)(2 * 1024))
 
 #define configSUPPORT_STATIC_ALLOCATION          0
 #define configSUPPORT_DYNAMIC_ALLOCATION         1
@@ -55,7 +55,7 @@
 #define configUSE_IDLE_HOOK                      1
 #define configUSE_TICK_HOOK                      0
 
-#define configCHECK_FOR_STACK_OVERFLOW           2
+#define configCHECK_FOR_STACK_OVERFLOW           0
 #define configUSE_MALLOC_FAILED_HOOK             1
 
 

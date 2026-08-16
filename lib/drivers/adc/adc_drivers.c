@@ -10,7 +10,7 @@ void ADC_Init(){
     hadc.Init.DiscontinuousConvMode = DISABLE;
     hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
     hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-    hadc.Init.NbrOfConversion = 2;
+    hadc.Init.NbrOfConversion = 3;
     HAL_ADC_Init(&hadc);
 }
 
