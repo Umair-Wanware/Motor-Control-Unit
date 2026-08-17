@@ -9,6 +9,7 @@
 #include "uart/uart_drivers.h"
 #include "sensor_packet.hpp"
 #include "sensors.hpp"
+#include "motor_control.hpp"
 #include "stm32f1xx_hal.h"
 
 #include "FreeRTOS.h"
@@ -104,6 +105,142 @@ class SensorTask {
     }
 };
 
+class CommunicationTask {
+    public:
+    CommunicationTask(QueueHandle_t sQ) : sensorQueue(sQ) {}
+
+    void Start(){
+        xTaskCreate(task_entry, "COMM", 512, this, 4, nullptr);
+    }
+
+    private:
+    QueueHandle_t sensorQueue;
+    static void task_entry(void *pvPara){
+        static_cast<CommunicationTask*>(pvPara)->Run();
+    }
+
+    void Run(){
+        SensorPacket packet;
+
+        while(true){
+            if(xQueueReceive(sensorQueue, &packet, portMAX_DELAY) == pdPASS){
+                HAL_SPI_Transmit(&hspi, reinterpret_cast<uint8_t*>(&packet), sizeof(packet), 1000);
+            }
+        }
+    }
+};
+
+class DisplayTask {
+    public:
+    DisplayTask(QueueHandle_t dQ) : displayQueue(dQ) {}
+
+    void Start(){
+        xTaskCreate(task_entry, "DISP", 512, this, 3, nullptr);
+    }
+
+    private:
+    QueueHandle_t displayQueue;
+    static void task_entry(void *pvPara){
+        static_cast<DisplayTask*>(pvPara)->Run();
+    }
+
+    void Run(){
+        SensorPacket packet;
+        char buffer[48];
+
+        TickType_t laskWakeTime = xTaskGetTickCount();
+        const TickType_t period = pdMS_TO_TICKS(200);
+
+        while(true){
+            xQueuePeek(displayQueue, &packet, 0);
+
+            ssd1306_Fill(Black);
+
+            snprintf(buffer, sizeof(buffer), "RPM : %4lu", (unsigned long)packet.rpm);
+            ssd1306_SetCursor(0, 0);
+            ssd1306_WriteString(buffer, Font_7x10, White);
+
+            snprintf(buffer, sizeof(buffer), "V   : %.2f", packet.voltage);
+            ssd1306_SetCursor(0, 16);
+            ssd1306_WriteString(buffer, Font_7x10, White);
+
+            snprintf(buffer, sizeof(buffer), "I   : %.2f", packet.current);              
+            ssd1306_SetCursor(0, 32);
+            ssd1306_WriteString(buffer, Font_7x10, White);
+
+            snprintf(buffer, sizeof(buffer), "T   : %.1f C", packet.temperature);
+            ssd1306_SetCursor(0, 48);
+            ssd1306_WriteString(buffer, Font_7x10, White);
+
+            ssd1306_UpdateScreen();
+
+            vTaskDelayUntil(&laskWakeTime, period);
+        }
+    }
+};
+
+class MotorTask {
+    public:
+    MotorTask(QueueHandle_t sQ) : sensorQueue(sQ) {}
+
+    void Start(){
+        xTaskCreate(task_entry, "MOTOR", 512, this, 2, nullptr);
+    }
+
+    private:
+    QueueHandle_t sensorQueue;
+    MotorControl motor;
+
+    static void task_entry(void *pvPara){
+        static_cast<MotorTask*>(pvPara)->Run();
+    }
+
+    void Run(){
+        SensorPacket packet;
+
+        motor.Init();
+        motor.SetTargetRPM(1500.0f);
+        motor.Start();
+
+        float duty = 0.0f;
+
+        TickType_t lastWakeTime = xTaskGetTickCount();
+        const TickType_t period = pdMS_TO_TICKS(1);
+
+        while(true){
+            if(xQueuePeek(sensorQueue, &packet, 0) == pdPASS){
+                switch(motor.GetState()){
+                    case MotorState::STOPPED:
+                        duty = 0.0f;
+                        motor.SetDuty(duty);
+                        break;
+                    case MotorState::STARTING:
+                        duty += 0.5f;
+                        if(duty > 20.0f) duty = 20.0f;
+                        motor.SetDuty(duty);
+                        break;
+                    case MotorState::RUNNING:
+                        motor.SetDuty(duty);
+                        break;
+                    case MotorState::STOPPING:
+                        duty -= 0.5f;
+                        if(duty < 0.0f) duty = 0.0f;
+                        motor.SetDuty(duty);
+                        break;
+                    case MotorState::FAULT:
+                        duty = 0.0f;
+                        motor.SetDuty(0.0f);
+                        break;
+                }
+                if(packet.temperature > 80.0f) motor.Stop();
+                if(packet.current > 20.0f) motor.Stop();
+                if(packet.voltage < 10.0f) motor.Stop();
+            }
+            vTaskDelayUntil(&lastWakeTime, period);
+        }
+    }
+};
+
 void App_Init(){
     UART_Init();
     SPI_Init();
@@ -120,8 +257,14 @@ void App_Init(){
     configASSERT(displayQueue);
 
     static SensorTask sensortask(sensorQueue, displayQueue);
+    static CommunicationTask communicationtask(sensorQueue);
+    static DisplayTask displaytask(displayQueue);
+    static MotorTask motortask(sensorQueue);
 
     sensortask.Start();
+    communicationtask.Start();
+    displaytask.Start();
+    motortask.Start();
 
     vTaskStartScheduler();
 
