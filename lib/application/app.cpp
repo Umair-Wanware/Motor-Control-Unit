@@ -10,6 +10,7 @@
 #include "sensor_packet.hpp"
 #include "sensors.hpp"
 #include "motor_control.hpp"
+#include "safety.hpp"
 #include "stm32f1xx_hal.h"
 
 #include "FreeRTOS.h"
@@ -38,14 +39,14 @@ extern "C" {
 
 class SensorTask {
     public:
-    SensorTask(QueueHandle_t sQ, QueueHandle_t dQ) : sensorQueue(sQ), displayQueue(dQ) {}
+    SensorTask(QueueHandle_t sQ, QueueHandle_t dQ, QueueHandle_t sfQ) : sensorQueue(sQ), displayQueue(dQ), safetyQueue(sfQ) {}
 
     void Start(){
         xTaskCreate(task_entry, "SENSORS", 512, this, 5, nullptr);
     }
 
     private:
-    QueueHandle_t sensorQueue, displayQueue;
+    QueueHandle_t sensorQueue, displayQueue, safetyQueue;
     static void task_entry(void *pvPara){
         static_cast<SensorTask*>(pvPara)->Run();
     }
@@ -99,6 +100,7 @@ class SensorTask {
 
             xQueueOverwrite(sensorQueue, &packet);
             xQueueOverwrite(displayQueue, &packet);
+            xQueueOverwrite(safetyQueue, &packet);
 
             vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1));
         }
@@ -241,6 +243,44 @@ class MotorTask {
     }
 };
 
+class SafetyTask {
+    public:
+    SafetyTask(QueueHandle_t sQ) : safetyQueue(sQ) {}
+
+    void Start(){
+        xTaskCreate(task_entry, "SAFETY", 512, this, 1, nullptr);
+    }
+
+    private:
+    QueueHandle_t safetyQueue;
+    MotorControl motor;
+
+    static void task_entry(void *pvPara){
+        static_cast<SafetyTask*>(pvPara)->Run();
+    }
+
+    void Run(){
+        SensorPacket packet;
+        Safety safety;
+
+        TickType_t lastWakeTime = xTaskGetTickCount();
+        const TickType_t period = pdMS_TO_TICKS(5);
+
+        while(true){
+            if(xQueuePeek(safetyQueue, &packet, 0) == pdPASS){
+                safety.checkCurrent(packet.current);
+                safety.checkVoltage(packet.voltage);
+                safety.checkTemperature(packet.temperature);
+
+                if(safety.Fault()){
+                    motor.Stop();
+                }
+            }
+        }
+        vTaskDelayUntil(&lastWakeTime, period);
+    }
+};
+
 void App_Init(){
     UART_Init();
     SPI_Init();
@@ -252,19 +292,23 @@ void App_Init(){
 
     QueueHandle_t sensorQueue = xQueueCreate(1, sizeof(SensorPacket));
     QueueHandle_t displayQueue = xQueueCreate(1, sizeof(SensorPacket));
+    QueueHandle_t safetyQueue = xQueueCreate(1, sizeof(SensorPacket));
 
     configASSERT(sensorQueue);
     configASSERT(displayQueue);
+    configASSERT(safetyQueue);
 
-    static SensorTask sensortask(sensorQueue, displayQueue);
+    static SensorTask sensortask(sensorQueue, displayQueue, safetyQueue);
     static CommunicationTask communicationtask(sensorQueue);
     static DisplayTask displaytask(displayQueue);
     static MotorTask motortask(sensorQueue);
+    static SafetyTask safetytask(safetyQueue);
 
     sensortask.Start();
     communicationtask.Start();
     displaytask.Start();
     motortask.Start();
+    safetytask.Start();
 
     vTaskStartScheduler();
 
