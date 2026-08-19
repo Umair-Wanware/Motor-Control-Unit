@@ -149,6 +149,7 @@ class DisplayTask {
     void Run(){
         SensorPacket packet;
         char buffer[48];
+        Safety safety;
 
         TickType_t laskWakeTime = xTaskGetTickCount();
         const TickType_t period = pdMS_TO_TICKS(200);
@@ -173,6 +174,12 @@ class DisplayTask {
             snprintf(buffer, sizeof(buffer), "T   : %.1f C", packet.temperature);
             ssd1306_SetCursor(0, 48);
             ssd1306_WriteString(buffer, Font_7x10, White);
+
+            if(packet.fault){
+                snprintf(buffer, sizeof(buffer), "FAULT!");
+                ssd1306_SetCursor(70, 48);
+                ssd1306_WriteString(buffer, Font_7x10, White);
+            }
 
             ssd1306_UpdateScreen();
 
